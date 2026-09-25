@@ -1,10 +1,10 @@
 # private-markets-C-D-tempo
 
-Framework for **private-market LP contributions and distributions** — capital calls (C), distributions (D), and the **tempo** of C vs D across fund life — built on Preqin-style Buyout / VC / Real Estate benchmarks.
+Framework for **private-market LP contributions and distributions** — capital calls (C), distributions (D), and the **tempo** of C vs D across fund life — on Preqin-style Buyout / VC / Real Estate benchmarks.
 
 ## Relation to source
 
-Seeded from [695088/priv-equity-distri-contri](https://github.com/695088/priv-equity-distri-contri) (fork of the IEOR 4742 PE cash-flow LSTM project). Original research scripts live under `legacy/` for reference. The product surface is the `private_markets_cd` package: data → prep → contribution / distribution models → tempo schedule → CLI. LSTM and mean-reverting diffusion are **pluggable backends**, not the top-level API.
+Seeded from [695088/priv-equity-distri-contri](https://github.com/695088/priv-equity-distri-contri) (fork of the IEOR 4742 PE cash-flow LSTM project). Original research scripts live under `legacy/`. The product surface is `private_markets_cd`: data → prep → contribution / distribution models → historical pace + forecast tempo → LP commitment API → CLI. LSTM and mean-reverting diffusion are **pluggable backends**, not the top-level API.
 
 ## Framework map
 
@@ -14,74 +14,74 @@ src/private_markets_cd/
   types.py                    CashFlowKind, FundType, FundSize
   data/load.py                Load C/D series by fund type & size
   data/prep.py                Log-diff, Gaussian densify, supervised windows
-  contributions/              LP capital-call (Called Up) models
-  distributions/              LP distribution models
-  tempo/schedule.py           Align C & D → pacing / DPI-proxy schedule
-  backends/
-    mrsr.py                   Mean-reverting Monte Carlo (default)
-    lstm.py                   Optional PyTorch LSTM
-  cli.py                      summarize | forecast | tempo
+  contributions/              Capital-call (Called Up) model wrappers
+  distributions/              Distribution model wrappers
+  tempo/pace.py               Historical %% Called Up / Distributed tempo
+  tempo/schedule.py           Model-backed C/D intensity schedule
+  lp.py                       LPCommitment + compare_fund_types
+  backends/mrsr.py|lstm.py    Pluggable forecast backends
+  cli.py                      summarize|pace|commitment|compare|forecast|tempo
 legacy/                       Original PE_Data / PE_LSTM_V5 / PE_MRSR scripts
-examples/lp_tempo_demo.py     End-to-end LP tempo demo
+examples/lp_tempo_demo.py
 ```
 
-| LP concern | Module |
-|------------|--------|
-| Contributions (capital calls) | `contributions` → metric `"Called Up"` |
-| Distributions | `distributions` → metric `"Distributed"` |
-| Timing / tempo of C vs D | `tempo.build_tempo_schedule` |
-| Fund type / size | `FundType` + `FundSize` over `data/*.xlsx` |
+| LP concern | Use this |
+|------------|----------|
+| Historical call / distribution pace | `build_pace_curve` or `private-markets-cd pace` |
+| Scale pace to a $ commitment | `LPCommitment` or `private-markets-cd commitment` |
+| Compare Buyout vs VC vs RE | `compare_fund_types` or `private-markets-cd compare` |
+| Model-backed C/D forecast | `--backend mrsr\|lstm` via `forecast` / `tempo` |
+| Fund type / size dimensions | `FundType` + `FundSize` over `data/*.xlsx` |
+
+**Defaults:** Buyout / size `All` / backend `mrsr`. VC workbooks expose `All` only; Real Estate maps `All-2000` → `All`.
 
 ## Quick start
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+python3 -m pip install -e ".[dev]"
 
-# Inventory C/D series for buyout benchmarks
+# Inventory C/D series
 private-markets-cd summarize --fund-type buyout
 
-# Forecast contributions or distributions (default backend: mrsr)
-private-markets-cd forecast --side C --fund-type buyout --size All
-private-markets-cd forecast --side D --fund-type buyout --size All
+# Historical LP tempo (cumulative % called / distributed)
+private-markets-cd pace --fund-type buyout --size All
 
-# Aligned C vs D tempo schedule (optional CSV)
-private-markets-cd tempo --fund-type buyout --size All --csv /tmp/tempo.csv
+# Scale to a $10M commitment
+private-markets-cd commitment --fund-type buyout --commitment 10000000 --csv /tmp/cf.csv
 
-# Or run the example script
-python examples/lp_tempo_demo.py
+# Compare fund types for the same commitment
+private-markets-cd compare --commitment 10000000
+
+# Optional model-backed intensity forecasts
+private-markets-cd forecast --side C --fund-type buyout
+private-markets-cd tempo --fund-type buyout --csv /tmp/tempo.csv
+
+python3 examples/lp_tempo_demo.py
 ```
 
-Optional LSTM backend:
-
-```bash
-pip install -e ".[lstm]"
-private-markets-cd forecast --side D --backend lstm --fund-type buyout
-```
+Optional LSTM backend: `pip install -e ".[lstm]"` then `--backend lstm`.
 
 ## Python API
 
 ```python
-from private_markets_cd import build_tempo_schedule
-from private_markets_cd.contributions import forecast_contributions
-from private_markets_cd.distributions import forecast_distributions
+from private_markets_cd import LPCommitment, build_pace_curve, compare_fund_types
 
-c = forecast_contributions("buyout", size="All", backend="mrsr", n_paths=200)
-d = forecast_distributions("buyout", size="All", backend="mrsr", n_paths=200)
-schedule = build_tempo_schedule("buyout", size="All", backend="mrsr")
-print(schedule.summary())
-print(schedule.to_frame().head())
+lp = LPCommitment(commitment=10_000_000, fund_type="buyout", size="All")
+print(lp.overview())
+print(lp.cashflows().head())
+
+pace = build_pace_curve("vc", "All")
+print(pace.summary())
+
+print(compare_fund_types(commitment=10_000_000))
 ```
 
 ## Tests
 
 ```bash
-pip install -e ".[dev]"
-pytest -q
+python3 -m pytest -q
 ```
 
-## Provenance / license note
+## Provenance
 
-Academic course code and Preqin-style sample stats are included for modeling research. Do not treat workbook figures as production market data. Upstream framing: Buchner, Kaserer & Wagner (stochastic PE cash flows), extended with LSTM in IEOR 4742.
+Academic course code and Preqin-style sample stats are included for modeling research — not production market data. Upstream framing: Buchner, Kaserer & Wagner; LSTM extension from IEOR 4742.

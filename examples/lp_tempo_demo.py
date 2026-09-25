@@ -1,4 +1,4 @@
-"""Example: LP tempo schedule for a buyout commitment."""
+"""Example: LP commitment cashflows + historical pace + optional forecast."""
 
 from __future__ import annotations
 
@@ -8,24 +8,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from private_markets_cd.tempo.schedule import build_tempo_schedule
+from private_markets_cd import LPCommitment, compare_fund_types
 
 
 def main() -> None:
-    schedule = build_tempo_schedule(
+    lp = LPCommitment(
+        commitment=10_000_000,
         fund_type="buyout",
         size="All",
-        backend="mrsr",
-        n_paths=200,
         data_dir=ROOT / "data",
-        seed=7,
     )
-    frame = schedule.to_frame()
-    print("Tempo summary:", schedule.summary())
-    print(frame.head(10).to_string(index=False))
-    out = ROOT / "examples" / "buyout_tempo_schedule.csv"
-    frame.to_csv(out, index=False)
+    print("Overview:", lp.overview())
+    cash = lp.cashflows()
+    print(cash.head(10).to_string(index=False))
+    out = ROOT / "examples" / "buyout_commitment_cashflows.csv"
+    cash.to_csv(out, index=False)
     print(f"Wrote {out}")
+
+    print("\nFund-type comparison:")
+    print(compare_fund_types(commitment=10_000_000, data_dir=ROOT / "data").to_string(index=False))
+
+    schedule = lp.forecast_tempo(backend="mrsr", n_paths=200, seed=7)
+    print("\nForecast tempo summary:", schedule.summary())
+    tempo_out = ROOT / "examples" / "buyout_tempo_schedule.csv"
+    schedule.to_frame().to_csv(tempo_out, index=False)
+    print(f"Wrote {tempo_out}")
 
 
 if __name__ == "__main__":

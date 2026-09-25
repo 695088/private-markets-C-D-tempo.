@@ -1,11 +1,9 @@
-"""Smoke tests for data load and MRSR tempo (no torch required)."""
+"""Smoke / unit tests for LP C/D tempo framework."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -22,6 +20,44 @@ def test_load_buyout_book():
     c = book.series(CashFlowKind.CONTRIBUTION, FundSize.ALL)
     d = book.series(CashFlowKind.DISTRIBUTION, FundSize.ALL)
     assert len(c) > 5 and len(d) > 5
+
+
+def test_load_vc_and_re():
+    from private_markets_cd.data.load import load_fund_book
+    from private_markets_cd.types import FundType
+
+    vc = load_fund_book(FundType.VC, data_dir=DATA)
+    re_ = load_fund_book(FundType.REAL_ESTATE, data_dir=DATA)
+    assert len(vc.levels) >= 1
+    assert len(re_.levels) >= 1
+
+
+def test_pace_curve_buyout():
+    from private_markets_cd.tempo.pace import build_pace_curve
+
+    pace = build_pace_curve("buyout", "All", data_dir=DATA)
+    assert pace.summary()["n_quarters"] > 5
+    assert "dpi" in pace.frame.columns
+    assert pace.frame["pct_called"].iloc[-1] > pace.frame["pct_called"].iloc[0]
+
+
+def test_lp_commitment_cashflows():
+    from private_markets_cd import LPCommitment
+
+    lp = LPCommitment(commitment=5_000_000, fund_type="buyout", size="All", data_dir=DATA)
+    cash = lp.cashflows()
+    overview = lp.overview()
+    assert abs(cash["contribution"].sum() - overview["lifetime_contributions"]) < 1e-6
+    assert overview["ending_dpi"] > 0
+    assert overview["lifetime_contributions"] > 0
+
+
+def test_compare_fund_types():
+    from private_markets_cd import compare_fund_types
+
+    frame = compare_fund_types(commitment=1_000_000, data_dir=DATA)
+    assert set(frame["fund_type"]) >= {"buyout", "vc", "real_estate"}
+    assert frame["dpi"].notna().any()
 
 
 def test_tempo_mrsr():

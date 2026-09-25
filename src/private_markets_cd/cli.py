@@ -122,6 +122,56 @@ def cmd_tempo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pace(args: argparse.Namespace) -> int:
+    from private_markets_cd.tempo.pace import build_pace_curve
+
+    pace = build_pace_curve(args.fund_type, args.size, data_dir=args.data_dir)
+    out = {
+        "summary": pace.summary(),
+        "head": pace.frame.head(8).to_dict(orient="list"),
+        "tail": pace.frame.tail(4).to_dict(orient="list"),
+    }
+    if args.csv:
+        path = Path(args.csv)
+        pace.frame.to_csv(path, index=False)
+        out["csv"] = str(path.resolve())
+    print(json.dumps(out, indent=2))
+    return 0
+
+
+def cmd_commitment(args: argparse.Namespace) -> int:
+    from private_markets_cd.lp import LPCommitment
+
+    lp = LPCommitment(
+        commitment=args.commitment,
+        fund_type=args.fund_type,
+        size=args.size,
+        data_dir=args.data_dir,
+    )
+    out = lp.overview(include_forecast=args.forecast, backend=args.backend)
+    if args.csv:
+        path = Path(args.csv)
+        lp.cashflows().to_csv(path, index=False)
+        out["csv"] = str(path.resolve())
+    print(json.dumps(out, indent=2))
+    return 0
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    from private_markets_cd.lp import compare_fund_types
+
+    frame = compare_fund_types(
+        commitment=args.commitment,
+        size=args.size,
+        data_dir=args.data_dir,
+    )
+    print(frame.to_string(index=False))
+    if args.csv:
+        frame.to_csv(args.csv, index=False)
+        print(f"Wrote {Path(args.csv).resolve()}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="private-markets-cd",
@@ -138,10 +188,41 @@ def build_parser() -> argparse.ArgumentParser:
     p_fc.add_argument("--side", choices=["C", "D"], required=True)
     p_fc.set_defaults(func=cmd_forecast)
 
-    p_t = sub.add_parser("tempo", help="Build aligned C vs D tempo schedule")
+    p_t = sub.add_parser(
+        "tempo",
+        help="Model-backed C/D intensity forecast schedule (MRSR/LSTM backends)",
+    )
     _add_common(p_t)
     p_t.add_argument("--csv", type=Path, default=None, help="Optional path to write schedule CSV")
     p_t.set_defaults(func=cmd_tempo)
+
+    p_p = sub.add_parser(
+        "pace",
+        help="Historical LP tempo from cumulative %% Called Up / Distributed",
+    )
+    _add_common(p_p)
+    p_p.add_argument("--csv", type=Path, default=None)
+    p_p.set_defaults(func=cmd_pace)
+
+    p_c = sub.add_parser(
+        "commitment",
+        help="Scale historical C/D pace to an LP commitment amount",
+    )
+    _add_common(p_c)
+    p_c.add_argument("--commitment", type=float, default=10_000_000.0)
+    p_c.add_argument(
+        "--forecast",
+        action="store_true",
+        help="Also attach model-backed intensity forecast summary",
+    )
+    p_c.add_argument("--csv", type=Path, default=None)
+    p_c.set_defaults(func=cmd_commitment)
+
+    p_cmp = sub.add_parser("compare", help="Compare Buyout / VC / RE pace for one commitment")
+    _add_common(p_cmp)
+    p_cmp.add_argument("--commitment", type=float, default=10_000_000.0)
+    p_cmp.add_argument("--csv", type=Path, default=None)
+    p_cmp.set_defaults(func=cmd_compare)
 
     return parser
 
