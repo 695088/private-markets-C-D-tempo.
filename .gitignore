@@ -8,3 +8,7 @@ venv/
 .DS_Store
 *.egg-info/
 .ipynb_checkpoints/
+dist/
+build/
+.pytest_cache/
+examples/*.csv
